@@ -58,7 +58,7 @@ function Perform-Choice([int]$userChoice) {
             $pathToISO = Read-Host "Please specify a path to your ISO image"
             $pathToISO = ($pathToISO -replace "`"", "") # Remove quotation marks in case the user adds them.
             $pathToISO = $pathToISO.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
-            while ((-not (Test-Path -Path $pathToISO -PathType Leaf)) -or (-not $pathToISO.EndsWith(".iso"))) {
+            while (([string]::IsNullOrEmpty($pathToISO)) -or (-not (Test-Path -Path $pathToISO -PathType Leaf)) -or (-not $pathToISO.EndsWith(".iso"))) {
                 $pathToISO = Read-Host "The ISO was not found. Please try again"
                 $pathToISO = ($pathToISO -replace "`"", "")
                 $pathToISO = $pathToISO.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
@@ -83,9 +83,10 @@ function Perform-Choice([int]$userChoice) {
                     Write-Host "$driveLetter"`t`t`t$(Print-ISOPath($driveLetter))
                 }
                 $driveToDismount = Read-Host "`nEnter the drive letter of the ISO you would like to dismount"
+                $driveToDismount = $driveToDismount.TrimEnd() # Strip out accidental spaces the user may add at the end
                 $driveToDismount = $driveToDismount.Replace(":\", "") # Optionally strip out these extra characters if the user adds them
                 $driveToDismount = $driveToDismount.TrimEnd() # Remove ending spaces because they will cause valid input to be rejected
-                while($driveToDismount -notin $ISODrives) {
+                while([string]::IsNullOrEmpty($driveToDismount) -or ($driveToDismount -notin $ISODrives)) {
                     $driveToDismount = Read-Host "You did not enter a drive letter with a mounted ISO. Please try again"
                     $driveToDismount = $driveToDismount.Replace(":\", "") # Optionally strip out these extra characters if the user adds them
                     $driveToDismount = $driveToDismount.TrimEnd() # Remove ending spaces because they will cause valid input to be rejected
