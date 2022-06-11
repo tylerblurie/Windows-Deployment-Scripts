@@ -31,6 +31,7 @@ function Print-ISOPath($letter) {
 }
 
 function CheckFor-ISOs() {
+    Write-Host "Checking for mounted ISOs..."
     # Create an array of drive letters to check for mounted ISOs the user could be modifying
     $mountedISOs = @() # Start with an empty array so we don't end up with duplicates
     65..90 | ForEach-Object {
@@ -52,6 +53,23 @@ function Dismount-ISO([char]$letterToDismount) {
     Write-Host "The ISO was dismounted successfully."
 }
 
+function Print-ISODrives($ISODrives) {
+    Write-Host # Empty line for separation of terminal output
+    if ($ISODrives.Count -gt 0) {
+        Write-Host "The following drives appear to contain mounted ISO files:`n"
+        # Show a table above our list of mounted ISOs:
+        Write-Host "Drive:`t`t`tISO Mounted:"
+        Write-Host "------`t`t`t-----------------------------------------------------------"
+
+        foreach ($driveLetter in $ISODrives) {
+            $driveLetter += ":\"
+            Write-Host "$driveLetter"`t`t`t$(Print-ISOPath($driveLetter))
+        }
+        return $true
+    }
+    return $false
+}
+
 function Perform-Choice([int]$userChoice) {
     switch ($userChoice) {
         1 {
@@ -68,26 +86,30 @@ function Perform-Choice([int]$userChoice) {
             Write-Host # Empty line for separating function output from menu
         }
 		2 {
+            # FIXME: Maybe use 7-Zip for this? Right now implemented via copy-paste.
+            $ISODrives = CheckFor-ISOs
+            $wantPrompt = Print-ISODrives($ISODrives)
+            # If we can find a mounted ISO, ask the user to simply enter the drive letter:
+            if ($wantPrompt -eq $true) {
+                $ISOToExtract = Read-Host "`nEnter the drive letter of the ISO you would like to extract"
+                $destinationDir = Read-Host "Enter the destination you'd like to extract the files to"
+                # TODO: Validate if it is exists, make sure it's not null, make sure we have write access, and if the directory doesn't exist, create it
+            }
+            else {
+                Write-Host "You need to mount an ISO before you can extract it."
+                $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+            }
 		}
         3 {
-            Write-Host "Checking for mounted ISOs..."
-            # If we can find a mounted ISO, ask the user to simply enter the drive letter:
             $ISODrives = CheckFor-ISOs
-            Write-Host # Empty line for separation of terminal output
-            if ($ISODrives.Count -gt 0) {
-                Write-Host "The following drives appear to contain mounted ISO files:`n"
-                # Show a table above our list of mounted ISOs:
-                Write-Host "Drive:`t`t`tISO Mounted:"
-                Write-Host "------`t`t`t-----------------------------------------------------------"
-
-                foreach ($driveLetter in $ISODrives) {
-                    $driveLetter += ":\"
-                    Write-Host "$driveLetter"`t`t`t$(Print-ISOPath($driveLetter))
-                }
+            $wantPrompt = Print-ISODrives($ISODrives)
+            # If we can find a mounted ISO, ask the user to simply enter the drive letter:
+            if ($wantPrompt -eq $true) {
                 $driveToDismount = Read-Host "`nEnter the drive letter of the ISO you would like to dismount"
                 $driveToDismount = $driveToDismount.TrimEnd() # Strip out accidental spaces the user may add at the end
                 $driveToDismount = $driveToDismount.Replace(":\", "") # Optionally strip out these extra characters if the user adds them
                 $driveToDismount = $driveToDismount.TrimEnd() # Remove ending spaces because they will cause valid input to be rejected
+                
                 while([string]::IsNullOrEmpty($driveToDismount) -or ($driveToDismount -notin $ISODrives)) {
                     $driveToDismount = Read-Host "You did not enter a drive letter with a mounted ISO. Please try again"
                     $driveToDismount = $driveToDismount.Replace(":\", "") # Optionally strip out these extra characters if the user adds them
@@ -95,12 +117,12 @@ function Perform-Choice([int]$userChoice) {
                 }
                 Write-Host # Empty line for separation between user input and terminal output
                 Dismount-ISO($driveToDismount)
+                Write-Host # Empty line for terminal output separation
             }
             else {
                 Write-Host -NoNewLine "No drives on the system appear to contain mounted ISOs.`n$errorProceed"
                 $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
             }
-            Write-Host # Empty line for terminal output separation
         }
         4 {
             $pathToWIM = Read-Host "Please specify a path to your WIM or ESD file"
