@@ -4,14 +4,14 @@ $errorProceed = "Press any key to continue..."
 function Print-Menu() {
     Write-Host "What would you like to do?`n"
     Write-Host "1) Mount ISO Image"
-    Write-Host "2) Dismount ISO Image"
-    Write-Host "3) Mount WIM Image"
-    Write-Host "4) Dismount WIM Image"
-    Write-Host "5) Find Indexes within ESD/WIM Image" # Index means an individual OS, such as Windows Pro
-    Write-Host "6) Convert ESD to WIM Image/Export Index of ESD/WIM Image"
-    Write-Host "7) Find Indexes within ESD/WIM Image"
+	Write-Host "2) Extract ISO Image"
+    Write-Host "3) Dismount ISO Image"
+    Write-Host "4) Find Indexes within ESD/WIM Image" # Index means an individual OS, such as Windows Pro
+    Write-Host "5) Mount WIM Image"
+    Write-Host "6) Dismount WIM Image"
+    Write-Host "7) Convert ESD to WIM Image/Export Index of ESD/WIM Image"
     Write-Host "8) Import Application Association XML File into WIM Image"
-    Write-Host "9) Build Custom ISO"
+    Write-Host "9) Repackage ISO from Source Files"
     Write-Host "$QUIT) Exit"
     Write-Host # Empty line for separation between menu and user input
 }
@@ -67,7 +67,9 @@ function Perform-Choice([int]$userChoice) {
             Mount-ISO($pathToISO)
             Write-Host # Empty line for separating function output from menu
         }
-        2 {
+		2 {
+		}
+        3 {
             Write-Host "Checking for mounted ISOs..."
             # If we can find a mounted ISO, ask the user to simply enter the drive letter:
             $ISODrives = CheckFor-ISOs
@@ -99,6 +101,19 @@ function Perform-Choice([int]$userChoice) {
                 $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
             }
             Write-Host # Empty line for terminal output separation
+        }
+        4 {
+            $pathToWIM = Read-Host "Please specify a path to your WIM or ESD file"
+            $pathToWIM = ($pathToWIM -replace "`"", "") # Remove quotation marks in case the user adds them.
+            $pathToWIM = $pathToWIM.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
+            while (([string]::IsNullOrEmpty($pathToWIM)) -or (-not (Test-Path -Path $pathToWIM -PathType Leaf)) -or ((-not $pathToWIM.EndsWith(".wim") -and (-not $pathToWIM.EndsWith(".esd"))))) {
+                $pathToWIM = Read-Host "The WIM/ESD file was not found. Please try again"
+                $pathToWIM = ($pathToWIM -replace "`"", "")
+                $pathToWIM = $pathToWIM.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
+            }
+            # Now that we've found the file, determine it's indexes:
+            Write-Host $(Get-WindowsImage -ImagePath "$pathToWIM" | Select-Object -Property ImageIndex, ImageName | Out-String)
+            # TODO: Maybe fix the spacing on this so it's a bit wider, which could be done by saving the indexes to one array and the names to another, then using a for loop
         }
     }
     #Clear-Host
