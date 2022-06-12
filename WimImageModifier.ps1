@@ -70,6 +70,53 @@ function Print-ISODrives($ISODrives) {
     return $false
 }
 
+function Get-DestinationDir() {
+    $destinationDir = Read-Host "Enter the destination you'd like to extract the files to"
+    $destinationDir = ($destinationDir -replace "`"", "") # Remove quotation marks in case the user adds them.
+    $destinationDir = $destinationDir.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
+    $canProceed = $false
+    while($canProceed -eq $false) {
+        while ([string]::IsNullOrEmpty($destinationDir)) {
+            $destinationDir = Read-Host "Invalid folder name. Please enter a different name"
+            $destinationDir = ($destinationDir -replace "`"", "")
+            $destinationDir = $destinationDir.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
+        }
+        if ($(Test-Path -PathType Container $destinationDir) -eq $false) {
+            try {
+                New-Item $destinationDir -ItemType Directory -ErrorAction SilentlyContinue | Out-Null
+                if ($(Test-Path -PathType Container $destinationDir) -eq $true) { Write-Host "Destination $destinationDir does not exist, so it will be created" }
+            }
+            catch [ArgumentException] {}
+            if ($(Test-Path -PathType Container $destinationDir) -eq $false) {
+                $destinationDir = Read-Host "Invalid folder name. Please enter a different name"
+                $destinationDir = ($destinationDir -replace "`"", "")
+                $destinationDir = $destinationDir.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
+            }
+        }
+        if (($destinationDir) -and $(Test-Path -PathType Container $destinationDir) -eq $true) { $canProceed = $true }
+    }
+    return $destinationDir
+}
+
+function Extract-ISOFiles([string]$sourcePath, [string]$destinationPath) {
+    $files = Get-ChildItem -Path $sourcePath -Recurse
+    $filecount = $files.count
+    $i=0
+    Foreach ($file in $files) {
+        $i++
+        Write-Progress -activity "Extracting files..." -status "($i of $filecount) $file" -percentcomplete (($i/$filecount)*100)
+    
+        # Determine the absolute path of this object's parent container.  This is stored as a different attribute on file and folder objects so we use an if block to cater for both
+        if ($file.psiscontainer) {$sourcefilecontainer = $file.parent} else {$sourcefilecontainer = $file.directory}
+    
+        # Calculate the path of the parent folder relative to the source folder
+        $relativepath = $sourcefilecontainer.fullname.SubString($sourcePath.length)
+    
+        # Copy the object to the appropriate folder within the destination folder
+        copy-Item $file.fullname ($destinationPath + $relativepath)
+    }
+}
+
 function Perform-Choice([int]$userChoice) {
     switch ($userChoice) {
         1 {
@@ -92,11 +139,25 @@ function Perform-Choice([int]$userChoice) {
             # If we can find a mounted ISO, ask the user to simply enter the drive letter:
             if ($wantPrompt -eq $true) {
                 $ISOToExtract = Read-Host "`nEnter the drive letter of the ISO you would like to extract"
-                $destinationDir = Read-Host "Enter the destination you'd like to extract the files to"
-                # TODO: Validate if it is exists, make sure it's not null, make sure we have write access, and if the directory doesn't exist, create it
+                $ISOToExtract = $ISOToExtract.TrimEnd() # Strip out accidental spaces the user may add at the end
+                $ISOToExtract = $ISOToExtract.Replace(":\", "") # Optionally strip out these extra characters if the user adds them
+                $ISOToExtract = $ISOToExtract.TrimEnd() # Remove ending spaces because they will cause valid input to be rejected
+                
+                while([string]::IsNullOrEmpty($ISOToExtract) -or ($ISOToExtract -notin $ISODrives)) {
+                    $ISOToExtract = Read-Host "You did not enter a drive letter with a mounted ISO. Please try again"
+                    $ISOToExtract = $ISOToExtract.Replace(":\", "") # Optionally strip out these extra characters if the user adds them
+                    $ISOToExtract = $ISOToExtract.TrimEnd() # Remove ending spaces because they will cause valid input to be rejected
+                }
+                $destinationDir = Get-DestinationDir
+                # Now that we have a valid path, we can utilize it:
+                # TODO: Create the folder if it doesn't exist
+                # TODO: Determine if the user can write to the directory. If they are not allowed, or it is in-use, do not allow try to copy the files:
+                $ISOToExtract = $ISOToExtract + ":\" # Add this back so we can use it as a path, the * will also grab all files and folders
+                if (-not ($destinationDir.EndsWith("\"))) { $destinationDir = $destinationDir + "\"} # Add a slash to the end of the directory so the copy function below works
+                Extract-ISOFiles $ISOToExtract $destinationDir # TODO: Only do this if we have write permissions to the directory
             }
             else {
-                Write-Host "You need to mount an ISO before you can extract it."
+                Write-Host "You need to mount an ISO before you can extract it.`n$errorProceed"
                 $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
             }
 		}
