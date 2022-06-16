@@ -195,8 +195,23 @@ function Perform-Choice([int]$userChoice) {
                 $pathToWIM = $pathToWIM.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
             }
             # Now that we've found the file, determine it's indexes:
-            Write-Host $(Get-WindowsImage -ImagePath "$pathToWIM" | Select-Object -Property ImageIndex, ImageName | Out-String)
-            # TODO: Maybe fix the spacing on this so it's a bit wider, which could be done by saving the indexes to one array and the names to another, then using a for loop
+            $indexes = (Get-WindowsImage -ImagePath "$pathToWIM").ImageIndex
+            $indexArray = @()
+            foreach ($index in $indexes) {
+                $indexArray += $index
+            }
+            $indexNames = (Get-WindowsImage -ImagePath "$pathToWIM").ImageName
+            
+            $nameArray = @()
+            foreach ($name in $indexNames) {
+                $nameArray += $name
+            }
+            Write-Host "Index:`t`t`tOperating System:"
+            Write-Host "------`t`t`t-----------------------------------------------------------"
+
+            for ($i = 0; $i -lt $indexArray.length; $i++) {
+                Write-Host $indexArray[$i]"`t`t`t"$nameArray[$i]
+            }
         }
     }
     #Clear-Host
