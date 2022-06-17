@@ -117,6 +117,27 @@ function Extract-ISOFiles([string]$sourcePath, [string]$destinationPath) {
     }
 }
 
+function Print-WIMIndexes([string]$pathToWIM)
+{
+    $indexes = (Get-WindowsImage -ImagePath "$pathToWIM").ImageIndex
+    $indexArray = @()
+    foreach ($index in $indexes) {
+        $indexArray += $index
+    }
+    $indexNames = (Get-WindowsImage -ImagePath "$pathToWIM").ImageName
+    
+    $nameArray = @()
+    foreach ($name in $indexNames) {
+        $nameArray += $name
+    }
+    Write-Host "Index:`t`t`tOperating System:"
+    Write-Host "------`t`t`t-----------------------------------------------------------"
+
+    for ($i = 0; $i -lt $indexArray.length; $i++) {
+        Write-Host $indexArray[$i]"`t`t`t"$nameArray[$i]
+    }
+}
+
 function Perform-Choice([int]$userChoice) {
     switch ($userChoice) {
         1 {
@@ -195,23 +216,8 @@ function Perform-Choice([int]$userChoice) {
                 $pathToWIM = $pathToWIM.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
             }
             # Now that we've found the file, determine it's indexes:
-            $indexes = (Get-WindowsImage -ImagePath "$pathToWIM").ImageIndex
-            $indexArray = @()
-            foreach ($index in $indexes) {
-                $indexArray += $index
-            }
-            $indexNames = (Get-WindowsImage -ImagePath "$pathToWIM").ImageName
-            
-            $nameArray = @()
-            foreach ($name in $indexNames) {
-                $nameArray += $name
-            }
-            Write-Host "Index:`t`t`tOperating System:"
-            Write-Host "------`t`t`t-----------------------------------------------------------"
-
-            for ($i = 0; $i -lt $indexArray.length; $i++) {
-                Write-Host $indexArray[$i]"`t`t`t"$nameArray[$i]
-            }
+            Print-WIMIndexes($pathToWIM)
+            Write-Host
         }
     }
     #Clear-Host
