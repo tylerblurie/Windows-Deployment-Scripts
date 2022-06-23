@@ -1,4 +1,5 @@
 $QUIT = 10 # Used to exit the program
+$INDEX_HELP_CHAR = "?"
 $errorProceed = "Press any key to continue..."
 
 function Print-Menu() {
@@ -8,7 +9,7 @@ function Print-Menu() {
     Write-Host "3) Dismount ISO Image"
     Write-Host "4) Find Indexes within ESD/WIM Image" # Index means an individual OS, such as Windows Pro
     Write-Host "5) Mount WIM Image"
-    Write-Host "6) Dismount WIM Image"
+    Write-Host "6) Unmount WIM Image"
     Write-Host "7) Convert ESD to WIM Image/Export Index of ESD/WIM Image"
     Write-Host "8) Import Application Association XML File into WIM Image"
     Write-Host "9) Repackage ISO from Source Files"
@@ -71,7 +72,7 @@ function Print-ISODrives($ISODrives) {
 }
 
 function Get-DestinationDir() {
-    $destinationDir = Read-Host "Enter the destination you'd like to extract the files to"
+    $destinationDir = Read-Host "Enter the destination you'd like to extract the files to" # TODO: Customize this prompt so this function can be used for other things besides just extracting the files
     $destinationDir = ($destinationDir -replace "`"", "") # Remove quotation marks in case the user adds them.
     $destinationDir = $destinationDir.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
     $canProceed = $false
@@ -98,6 +99,27 @@ function Get-DestinationDir() {
     return $destinationDir
 }
 
+function Get-MountedWIMDestinationDir() {
+    $destinationDir = Read-Host "Enter the path that contains the files of the WIM image you would like to unmount"
+    $destinationDir = ($destinationDir -replace "`"", "") # Remove quotation marks in case the user adds them.
+    $destinationDir = $destinationDir.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
+    $canProceed = $false
+    while($canProceed -eq $false) {
+        while ([string]::IsNullOrEmpty($destinationDir)) {
+            $destinationDir = Read-Host "Invalid folder name. Please enter a different name"
+            $destinationDir = ($destinationDir -replace "`"", "")
+            $destinationDir = $destinationDir.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
+        }
+        if ($destinationDir -notin $($(Get-WindowsImage -Mounted).Path)) {
+            $destinationDir = Read-Host "This path does not appear to contain files from a mounted WIM image. Please try again"
+            $destinationDir = ($destinationDir -replace "`"", "")
+            $destinationDir = $destinationDir.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
+        }
+        if (($destinationDir) -and $($destinationDir -in $(Get-WindowsImage -Mounted).Path)) { $canProceed = $true }
+    }
+    return $destinationDir
+}
+
 function Extract-ISOFiles([string]$sourcePath, [string]$destinationPath) {
     $files = Get-ChildItem -Path $sourcePath -Recurse
     $filecount = $files.count
@@ -113,29 +135,78 @@ function Extract-ISOFiles([string]$sourcePath, [string]$destinationPath) {
         $relativepath = $sourcefilecontainer.fullname.SubString($sourcePath.length)
     
         # Copy the object to the appropriate folder within the destination folder
-        copy-Item $file.fullname ($destinationPath + $relativepath)
+        copy-Item $file.fullname ($destinationPath + $relativepath) -PassThru | Where-Object { -not $_.PSIsContainer } | Set-ItemProperty -Name IsReadOnly -Value $false # Remove Read-Only attribute so we can modify
     }
+    Write-Progress -Completed
 }
 
-function Print-WIMIndexes([string]$pathToWIM)
+function Get-WIMIndexes([string]$pathToWIM)
 {
     $indexes = (Get-WindowsImage -ImagePath "$pathToWIM").ImageIndex
     $indexArray = @()
     foreach ($index in $indexes) {
         $indexArray += $index
     }
+    return $indexArray
+}
+
+function Get-WIMIndexNames([string]$pathToWIM)
+{
     $indexNames = (Get-WindowsImage -ImagePath "$pathToWIM").ImageName
-    
     $nameArray = @()
     foreach ($name in $indexNames) {
         $nameArray += $name
     }
+    return $nameArray
+}
+
+function Print-WIMIndexes([string]$pathToWIM)
+{
+    $indexArray = Get-WIMIndexes($pathToWIM)
+    $nameArray = Get-WIMIndexNames($pathToWIM)
     Write-Host "Index:`t`t`tOperating System:"
     Write-Host "------`t`t`t-----------------------------------------------------------"
 
     for ($i = 0; $i -lt $indexArray.length; $i++) {
         Write-Host $indexArray[$i]"`t`t`t"$nameArray[$i]
     }
+}
+
+function Get-WIMPath() {
+    $pathToWIM = Read-Host "Please specify a path to your WIM or ESD file"
+    $pathToWIM = ($pathToWIM -replace "`"", "") # Remove quotation marks in case the user adds them.
+    $pathToWIM = $pathToWIM.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
+    while (([string]::IsNullOrEmpty($pathToWIM)) -or (-not (Test-Path -Path $pathToWIM -PathType Leaf)) -or ((-not $pathToWIM.EndsWith(".wim") -and (-not $pathToWIM.EndsWith(".esd"))))) {
+        $pathToWIM = Read-Host "The WIM/ESD file was not found. Please try again"
+        $pathToWIM = ($pathToWIM -replace "`"", "")
+        $pathToWIM = $pathToWIM.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
+    }
+    return $pathToWIM
+}
+
+
+# This function is currently unused, but left in the code in case I later decide to space out (from left to right) the options for unmounting a WIM image.
+function Get-MountedWIMImagePaths()
+{
+    $paths = $(Get-WindowsImage -Mounted).Path
+    $pathArray = @()
+    foreach ($path in $paths)
+    {
+        $pathArray += $path
+    }
+    return $pathArray
+}
+
+# This function is currently unused, but left in the code in case I later decide to space out (from left to right) the options for unmounting a WIM image.
+function Get-MountedWIMImages()
+{
+    $images = $(Get-WindowsImage -Mounted).name
+    $imageArray = @()
+    foreach ($image in $images)
+    {
+        $imageArray += $image
+    }
+    return $imageArray
 }
 
 function Perform-Choice([int]$userChoice) {
@@ -207,17 +278,73 @@ function Perform-Choice([int]$userChoice) {
             }
         }
         4 {
-            $pathToWIM = Read-Host "Please specify a path to your WIM or ESD file"
-            $pathToWIM = ($pathToWIM -replace "`"", "") # Remove quotation marks in case the user adds them.
-            $pathToWIM = $pathToWIM.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
-            while (([string]::IsNullOrEmpty($pathToWIM)) -or (-not (Test-Path -Path $pathToWIM -PathType Leaf)) -or ((-not $pathToWIM.EndsWith(".wim") -and (-not $pathToWIM.EndsWith(".esd"))))) {
-                $pathToWIM = Read-Host "The WIM/ESD file was not found. Please try again"
-                $pathToWIM = ($pathToWIM -replace "`"", "")
-                $pathToWIM = $pathToWIM.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
-            }
+            $pathToWIM = Get-WIMPath
             # Now that we've found the file, determine it's indexes:
+            Write-Host "`nDetecting operating systems...`n"
             Print-WIMIndexes($pathToWIM)
             Write-Host
+        }
+        5 {
+            $indexHelpPrompt = "$INDEX_HELP_CHAR to view indexes"
+            $pathToWIM = Get-WIMPath
+            Write-Host "`nDetecting operating systems...`n"
+            $indexArray = Get-WIMIndexes($pathToWIM)
+            $index = Read-Host "Enter the index of the operating system you'd like to mount ($indexHelpPrompt)"
+            $index = $index.Trim()
+            while($indexArray -notcontains $index)
+            {
+                if ($index -eq $INDEX_HELP_CHAR)
+                {
+                    Write-Host "Fetching indexes..."
+                    Write-Host # Blank line
+                    Print-WIMIndexes($pathToWIM)
+                    Write-Host # Blank line
+                    $index = Read-Host "Enter the index of the operating system you'd like to mount ($indexHelpPrompt)"
+                    $index = $index.Trim()
+                }
+                else
+                {
+                    $index = Read-Host "That is not a valid index. Please enter an index (1-$($indexArray.Length)) [$indexHelpPrompt]"
+                    $index = $index.Trim()
+                }
+
+            }
+            $destinationDir = Get-DestinationDir
+            #Write-Host "`nMounting WIM image. Please wait...`n"
+            Dism.exe /Mount-Image /ImageFile:"$pathToWIM" /Index:$index /MountDir:"$destinationDir" /Optimize # TODO: Ensure write permissions
+            #Write-Host "Successfully mounted WIM image!`n"
+        }
+        6 {
+            Write-Host "The following paths contain files pertaining to the following WIM images:"
+            Write-Host $(Get-WindowsImage -Mounted | Select-Object -Property Path, ImagePath | Out-String)
+            $destinationDir = Get-MountedWIMDestinationDir
+            $wantCommit = "" # Initialize null string for commit check
+            while ($wantCommit -notin @("y", "n"))
+            {
+                $wantCommit = Read-Host "Do you want to commit changes you've made to the WIM file (y/n)?"
+                $wantCommit = $wantCommit.Trim()
+            }
+            if ($wantCommit -eq "y") { $saveChangesArg = "Commit" }
+            elseif ($wantCommit -eq "n") { $saveChangesArg = "Discard" }
+            Write-Host "`nUnmounting WIM image. Please wait...`n"
+            # If the user has an Explorer window open to the directory, we must close and re-open it so that the files can successfully unmount:
+            $shell = New-Object -ComObject Shell.Application
+            $window = $shell.Windows() | Where-Object { $_.LocationURL -like "$(([uri]$destinationDir).AbsoluteUri)*" }
+            $wantReopen = $false
+            if (-not [string]::IsNullOrEmpty($window))
+            {
+                Write-Host "All Explorer windows in $destinationDir must be closed to proceed. Closing Explorer windows..."
+                $wantReopen = $true
+            }
+            $window | ForEach-Object { $_.Quit() }
+            # All code after will be executed after window was closed
+            Dism.exe /Unmount-Image /MountDir:$destinationDir /$saveChangesArg
+            if ($wantReopen -eq $true)
+            {
+                Write-Host "Reopening closed Explorer window..."
+                C:\Windows\explorer.exe $destinationDir
+            }
+            # TODO: Output the name of the WIM file that was modified
         }
     }
     #Clear-Host
