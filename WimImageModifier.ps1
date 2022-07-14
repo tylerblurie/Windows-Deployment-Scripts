@@ -310,41 +310,53 @@ function Perform-Choice([int]$userChoice) {
 
             }
             $destinationDir = Get-DestinationDir
-            #Write-Host "`nMounting WIM image. Please wait...`n"
             Dism.exe /Mount-Image /ImageFile:"$pathToWIM" /Index:$index /MountDir:"$destinationDir" /Optimize # TODO: Ensure write permissions
-            #Write-Host "Successfully mounted WIM image!`n"
+            Write-Host # Blank line in output
         }
         6 {
-            Write-Host "The following paths contain files pertaining to the following WIM images:"
-            Write-Host $(Get-WindowsImage -Mounted | Select-Object -Property Path, ImagePath | Out-String)
-            $destinationDir = Get-MountedWIMDestinationDir
-            $wantCommit = "" # Initialize null string for commit check
-            while ($wantCommit -notin @("y", "n"))
+            $mountedImages = $(Get-WindowsImage -Mounted | Select-Object -Property Path, ImagePath, ImageIndex | Out-String)
+            if (-not [string]::IsNullOrEmpty($mountedImages))
             {
-                $wantCommit = Read-Host "Do you want to commit changes you've made to the WIM file (y/n)?"
-                $wantCommit = $wantCommit.Trim()
+                Write-Host "The following paths contain files pertaining to the following WIM images:"
+                Write-Host $mountedImages
+                $destinationDir = Get-MountedWIMDestinationDir
+                $originalWIM = $(Get-WindowsImage -Mounted | Where-Object -Property Path -EQ $destinationDir).ImagePath # Take note of the original WIM to remind the user where it is
+                $wantCommit = "" # Initialize null string for commit check
+                while ($wantCommit -notin @("y", "n"))
+                {
+                    $wantCommit = Read-Host "Do you want to commit changes you've made to the WIM file (y/n)?"
+                    $wantCommit = $wantCommit.Trim()
+                }
+                if ($wantCommit -eq "y") { $saveChangesArg = "Commit" }
+                elseif ($wantCommit -eq "n") { $saveChangesArg = "Discard" }
+                Write-Host "`nUnmounting WIM image. Please wait...`n"
+                # If the user has an Explorer window open to the directory, we must close and re-open it so that the files can successfully unmount:
+                $shell = New-Object -ComObject Shell.Application
+                $window = $shell.Windows() | Where-Object { $_.LocationURL -like "$(([uri]$destinationDir).AbsoluteUri)*" }
+                $wantReopen = $false
+                if (-not [string]::IsNullOrEmpty($window))
+                {
+                    Write-Host "All Explorer windows in $destinationDir must be closed to proceed. Closing Explorer windows..."
+                    $wantReopen = $true
+                }
+                $window | ForEach-Object { $_.Quit() }
+                # All code after will be executed after window was closed
+                Dism.exe /Unmount-Image /MountDir:$destinationDir /$saveChangesArg
+                if ($wantReopen -eq $true)
+                {
+                    Write-Host "Reopening closed Explorer window..."
+                    C:\Windows\explorer.exe $destinationDir
+                }
+                Write-Host "`nSuccessfully unmounted $originalWIM`n"
             }
-            if ($wantCommit -eq "y") { $saveChangesArg = "Commit" }
-            elseif ($wantCommit -eq "n") { $saveChangesArg = "Discard" }
-            Write-Host "`nUnmounting WIM image. Please wait...`n"
-            # If the user has an Explorer window open to the directory, we must close and re-open it so that the files can successfully unmount:
-            $shell = New-Object -ComObject Shell.Application
-            $window = $shell.Windows() | Where-Object { $_.LocationURL -like "$(([uri]$destinationDir).AbsoluteUri)*" }
-            $wantReopen = $false
-            if (-not [string]::IsNullOrEmpty($window))
+            else
             {
-                Write-Host "All Explorer windows in $destinationDir must be closed to proceed. Closing Explorer windows..."
-                $wantReopen = $true
+                Write-Host "There are currently no WIM images to unmount.`n"
             }
-            $window | ForEach-Object { $_.Quit() }
-            # All code after will be executed after window was closed
-            Dism.exe /Unmount-Image /MountDir:$destinationDir /$saveChangesArg
-            if ($wantReopen -eq $true)
-            {
-                Write-Host "Reopening closed Explorer window..."
-                C:\Windows\explorer.exe $destinationDir
-            }
-            # TODO: Output the name of the WIM file that was modified
+            # TODO: Fix spacing on the output menu, and use numbers for convenience instead of making the user type the path
+        }
+        7 {
+            
         }
     }
     #Clear-Host
