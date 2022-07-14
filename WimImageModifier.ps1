@@ -19,6 +19,18 @@ function Print-Menu() {
 }
 
 
+function ElevateTo-Admin() {
+    # Self-elevate the script if required
+    if (-Not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')) {
+        if ([int](Get-CimInstance -Class Win32_OperatingSystem | Select-Object -ExpandProperty BuildNumber) -ge 6000) {
+        $CommandLine = "-File `"" + $MyInvocation.MyCommand.Path + "`" " + $MyInvocation.UnboundArguments
+        Write-Host "This script requires administrator privileges to work correctly.`n$errorProceed"
+        $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+        Start-Process -FilePath PowerShell.exe -WindowStyle hidden -Verb Runas -ArgumentList $CommandLine
+        }
+    }
+}
+
 function Mount-ISO([string]$path) {
     Write-Host "`nMounting ISO...`n"
     $mountResult = Mount-DiskImage -ImagePath "$path"
@@ -426,6 +438,7 @@ function Perform-Choice([int]$userChoice) {
 
 
 
+ElevateTo-Admin # This will be needed for a few functions (mainly anything requiring DISM)
 Clear-Host
 # Loop the script until the user quits:
 do {
