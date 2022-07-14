@@ -212,10 +212,17 @@ function Get-MountedWIMImages()
 
 function Select-WIMIndex([string]$prompt, [string]$pathToWIM, [bool]$wantMultiIndexes=$false)
 {
+    if($wantMultiIndexes)
+    {
+        $plural = "(es)"
+    } else {
+        $plural = ""
+    }
     Write-Host "`nDetecting operating systems...`n"
     $indexArray = Get-WIMIndexes($pathToWIM)
     $indexes = Read-Host $prompt
     $indexes = $indexes.Replace(" ", "") # Remove spaces
+    if($wantMultiIndexes -eq $false) { $indexes = $indexes.Replace(",", "") } # Strip out commas early so we force the user to choose only one index if necessary.
     if($indexes.Contains(","))
     {
         $indexList = $indexes.Split(",") # Store all the indexes we want to convert
@@ -238,9 +245,13 @@ function Select-WIMIndex([string]$prompt, [string]$pathToWIM, [bool]$wantMultiIn
             Write-Host # Blank line
             $indexes = Read-Host $prompt
             $indexes = $indexes.Replace(" ", "") # Remove spaces
+            if($wantMultiIndexes -eq $false) { $indexes = $indexes.Replace(",", "") } # Strip out commas early so we force the user to choose only one index if necessary.
             if($indexes.Contains(","))
             {
                 $indexList = $indexes.Split(",") # Store all the indexes we want to convert
+            }
+            else {
+                $indexList = $indexes
             }
             $allIndexesVaid = $true
             foreach($index in $indexList)
@@ -250,11 +261,15 @@ function Select-WIMIndex([string]$prompt, [string]$pathToWIM, [bool]$wantMultiIn
         }
         else
         {
-            $indexes = Read-Host "Invalid index(es). Please enter index(es) between (1-$($indexArray.Length)) [$INDEX_HELP_PROMPT]"
+            $indexes = Read-Host "Invalid index$plural. Please enter index$plural between (1-$($indexArray.Length)) [$INDEX_HELP_PROMPT]"
             $indexes = $indexes.Replace(" ", "") # Remove spaces
+            if($wantMultiIndexes -eq $false) { $indexes = $indexes.Replace(",", "") } # Strip out commas early so we force the user to choose only one index if necessary.
             if($indexes.Contains(","))
             {
                 $indexList = $indexes.Split(",") # Store all the indexes we want to convert
+            }
+            else {
+                $indexList = $indexes
             }
             $allIndexesVaid = $true
             foreach($index in $indexList)
@@ -393,7 +408,7 @@ function Perform-Choice([int]$userChoice) {
         }
         7 {
             $pathToWIM = Get-WIMPath
-            $indexes = Select-WIMIndex "Enter the index(es) of the operating systems you'd like to export separated by commas (e.g., 1, 2, 3) [$INDEX_HELP_PROMPT]" $pathToWIM
+            $indexes = Select-WIMIndex "Enter the index(es) of the operating systems you'd like to export separated by commas (e.g., 1, 2, 3) [$INDEX_HELP_PROMPT]" $pathToWIM $true
             $destinationDir = Get-DestinationDir "Enter the destination folder you'd like to output the new WIM file to"
             foreach($index in $indexes)
             {
