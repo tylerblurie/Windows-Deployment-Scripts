@@ -1,5 +1,6 @@
 $QUIT = 10 # Used to exit the program
 $INDEX_HELP_CHAR = "?"
+$INDEX_HELP_PROMPT = "$INDEX_HELP_CHAR to view indexes"
 $errorProceed = "Press any key to continue..."
 
 function Print-Menu() {
@@ -71,14 +72,14 @@ function Print-ISODrives($ISODrives) {
     return $false
 }
 
-function Get-DestinationDir() {
-    $destinationDir = Read-Host "Enter the destination you'd like to extract the files to" # TODO: Customize this prompt so this function can be used for other things besides just extracting the files
+function Get-DestinationDir([string]$prompt) {
+    $destinationDir = Read-Host $prompt #"Enter the destination you'd like to extract the files to" # TODO: Customize this prompt so this function can be used for other things besides just extracting the files
     $destinationDir = ($destinationDir -replace "`"", "") # Remove quotation marks in case the user adds them.
     $destinationDir = $destinationDir.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
     $canProceed = $false
     while($canProceed -eq $false) {
         while ([string]::IsNullOrEmpty($destinationDir)) {
-            $destinationDir = Read-Host "Invalid folder name. Please enter a different name"
+            $destinationDir = Read-Host "Invalid file or folder path. Please enter a different path"
             $destinationDir = ($destinationDir -replace "`"", "")
             $destinationDir = $destinationDir.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
         }
@@ -89,7 +90,7 @@ function Get-DestinationDir() {
             }
             catch [ArgumentException] {}
             if ($(Test-Path -PathType Container $destinationDir) -eq $false) {
-                $destinationDir = Read-Host "Invalid folder name. Please enter a different name"
+                $destinationDir = Read-Host "Invalid file or folder path. Please enter a different path"
                 $destinationDir = ($destinationDir -replace "`"", "")
                 $destinationDir = $destinationDir.TrimEnd() # Remove ending spaces because they will conflict with using the variable later despite Windows still understanding the path
             }
@@ -209,6 +210,63 @@ function Get-MountedWIMImages()
     return $imageArray
 }
 
+function Select-WIMIndex([string]$prompt, [string]$pathToWIM, [bool]$wantMultiIndexes=$false)
+{
+    Write-Host "`nDetecting operating systems...`n"
+    $indexArray = Get-WIMIndexes($pathToWIM)
+    $indexes = Read-Host $prompt
+    $indexes = $indexes.Replace(" ", "") # Remove spaces
+    if($indexes.Contains(","))
+    {
+        $indexList = $indexes.Split(",") # Store all the indexes we want to convert
+    }
+    else {
+        $indexList = $indexes
+    }
+    $allIndexesVaid = $true
+    foreach($index in $indexList)
+    {
+        if($indexArray -notcontains $index) { $allIndexesVaid = $false }
+    }
+    while ($allIndexesVaid -eq $false)
+    {
+        if ($indexes -eq $INDEX_HELP_CHAR)
+        {
+            Write-Host "Fetching indexes..."
+            Write-Host # Blank line
+            Print-WIMIndexes($pathToWIM)
+            Write-Host # Blank line
+            $indexes = Read-Host $prompt
+            $indexes = $indexes.Replace(" ", "") # Remove spaces
+            if($indexes.Contains(","))
+            {
+                $indexList = $indexes.Split(",") # Store all the indexes we want to convert
+            }
+            $allIndexesVaid = $true
+            foreach($index in $indexList)
+            {
+                if($indexArray -notcontains $index) { $allIndexesVaid = $false }
+            }
+        }
+        else
+        {
+            $indexes = Read-Host "Invalid index(es). Please enter index(es) between (1-$($indexArray.Length)) [$INDEX_HELP_PROMPT]"
+            $indexes = $indexes.Replace(" ", "") # Remove spaces
+            if($indexes.Contains(","))
+            {
+                $indexList = $indexes.Split(",") # Store all the indexes we want to convert
+            }
+            $allIndexesVaid = $true
+            foreach($index in $indexList)
+            {
+                if($indexArray -notcontains $index) { $allIndexesVaid = $false }
+            }
+        }
+
+    }
+    return $indexList
+}
+
 function Perform-Choice([int]$userChoice) {
     switch ($userChoice) {
         1 {
@@ -240,7 +298,7 @@ function Perform-Choice([int]$userChoice) {
                     $ISOToExtract = $ISOToExtract.Replace(":\", "") # Optionally strip out these extra characters if the user adds them
                     $ISOToExtract = $ISOToExtract.TrimEnd() # Remove ending spaces because they will cause valid input to be rejected
                 }
-                $destinationDir = Get-DestinationDir
+                $destinationDir = Get-DestinationDir "Enter the destination you'd like to extract the files to"
                 # Now that we have a valid path, we can utilize it:
                 # TODO: Create the folder if it doesn't exist
                 # TODO: Determine if the user can write to the directory. If they are not allowed, or it is in-use, do not allow try to copy the files:
@@ -285,31 +343,9 @@ function Perform-Choice([int]$userChoice) {
             Write-Host
         }
         5 {
-            $indexHelpPrompt = "$INDEX_HELP_CHAR to view indexes"
             $pathToWIM = Get-WIMPath
-            Write-Host "`nDetecting operating systems...`n"
-            $indexArray = Get-WIMIndexes($pathToWIM)
-            $index = Read-Host "Enter the index of the operating system you'd like to mount ($indexHelpPrompt)"
-            $index = $index.Trim()
-            while($indexArray -notcontains $index)
-            {
-                if ($index -eq $INDEX_HELP_CHAR)
-                {
-                    Write-Host "Fetching indexes..."
-                    Write-Host # Blank line
-                    Print-WIMIndexes($pathToWIM)
-                    Write-Host # Blank line
-                    $index = Read-Host "Enter the index of the operating system you'd like to mount ($indexHelpPrompt)"
-                    $index = $index.Trim()
-                }
-                else
-                {
-                    $index = Read-Host "That is not a valid index. Please enter an index (1-$($indexArray.Length)) [$indexHelpPrompt]"
-                    $index = $index.Trim()
-                }
-
-            }
-            $destinationDir = Get-DestinationDir
+            $index = Select-WIMIndex "Enter the index of the operating system you'd like to mount ($INDEX_HELP_PROMPT)" $pathToWIM
+            $destinationDir = Get-DestinationDir "Enter the destination you'd like to mount the files to"
             Dism.exe /Mount-Image /ImageFile:"$pathToWIM" /Index:$index /MountDir:"$destinationDir" /Optimize # TODO: Ensure write permissions
             Write-Host # Blank line in output
         }
@@ -356,7 +392,16 @@ function Perform-Choice([int]$userChoice) {
             # TODO: Fix spacing on the output menu, and use numbers for convenience instead of making the user type the path
         }
         7 {
-            
+            $pathToWIM = Get-WIMPath
+            $indexes = Select-WIMIndex "Enter the index(es) of the operating systems you'd like to export separated by commas (e.g., 1, 2, 3) [$INDEX_HELP_PROMPT]" $pathToWIM
+            $destinationDir = Get-DestinationDir "Enter the destination folder you'd like to output the new WIM file to"
+            foreach($index in $indexes)
+            {
+                $currentOS = $((Get-WindowsImage -ImagePath "$pathToWIM" -Index $index).ImageName)
+                Write-Host "`nExporting OS: $currentOS"
+                Dism /Export-Image /SourceImageFile:$pathToWIM /SourceIndex:$index /DestinationImageFile:$destinationDir\install.wim /Compress:max /CheckIntegrity
+                Write-Host "`nFinished exporting $currentOS"
+            }
         }
     }
     #Clear-Host
